@@ -4,7 +4,7 @@ This file provides guidance for AI coding agents working in the `spores` reposit
 
 ## Project Overview
 
-Spores is a Rust CLI tool for Spotify playlist management via the Spotify Web API. It is a single-crate binary with all source code in `src/main.rs` (~480 lines). It uses `rspotify` for API interaction, `clap` (derive) for CLI parsing, and outputs structured JSON.
+Spores is a Rust CLI tool for Spotify playlist management via the Spotify Web API. It is a single-crate binary with all source code in `src/main.rs`. It uses `rspotify` for API interaction, `clap` (derive) for CLI parsing, and outputs structured JSON.
 
 - **Language:** Rust (edition 2024)
 - **Async runtime:** Tokio (full features)
@@ -69,7 +69,7 @@ The codebase uses horizontal-rule comment banners to separate logical sections:
 // ---------------------------------------------------------------------------
 ```
 
-Current sections in order: Config, CLI, Helpers, Auth, Search, Playlist commands, Main. Follow this convention when adding new sections.
+Current sections in order: Config, CLI, Helpers, Auth, Search, Playlist commands, Save to library, Main. Follow this convention when adding new sections.
 
 ### Imports
 
@@ -120,17 +120,20 @@ Current sections in order: Config, CLI, Helpers, Auth, Search, Playlist commands
 
 ### rspotify API Patterns
 
-- Use `PlaylistId::from_id_or_uri()` and `TrackId::from_id_or_uri()` to accept both raw IDs and Spotify URIs.
+- Use `PlaylistId::from_id_or_uri()`, `TrackId::from_id_or_uri()`, and `AlbumId::from_id_or_uri()` to accept both raw IDs and Spotify URIs.
 - `PlayableItem` enum has `Track`, `Episode`, and unknown variants -- always include a wildcard arm.
 - For paginated endpoints, loop with offset/limit and check `.next.is_none()` to stop.
 - `playlist_add_items` requires converting `TrackId` -> `PlayableId::Track(id)`.
+- `current_user_saved_tracks_add` accepts an iterator of `TrackId` to save tracks to the user's library.
+- `current_user_saved_albums_add` accepts an iterator of `AlbumId` to save albums to the user's library.
+- `playlist_follow` accepts a `PlaylistId` and optional `public` flag to save (follow) a playlist.
 
 ### Configuration
 
 - Config lives at `$XDG_CONFIG_HOME/spores/config.toml` (macOS: `~/Library/Application Support/spores/config.toml`).
 - Token cache at `$XDG_CONFIG_HOME/spores/token_cache.json`.
 - The redirect URI must use `127.0.0.1` (not `localhost`) -- Spotify rejects localhost.
-- Required OAuth scopes: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-public`, `playlist-modify-private`.
+- Required OAuth scopes: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-public`, `playlist-modify-private`, `user-library-modify`.
 
 ### Dependencies
 
@@ -143,7 +146,7 @@ Keep dependencies minimal. Current dependency versions are pinned in `Cargo.toml
 ├── Cargo.toml          # Crate manifest
 ├── Cargo.lock          # Lockfile (committed)
 ├── src/
-│   └── main.rs         # Entire application (~480 lines)
+│   └── main.rs         # Entire application
 ├── skills/
 │   └── spores/
 │       └── SKILL.md    # AI skill definition (detailed dev guide)

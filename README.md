@@ -82,6 +82,27 @@ spores playlist add <playlist_id> <track_id1> <track_id2>
 
 All playlist and track arguments accept either raw Spotify IDs or full URIs (e.g. `spotify:track:6rqhFgbbKwnb9MLmUQDhG6`).
 
+### Save to library
+
+Save tracks, albums, or playlists to your Spotify library ("Your Music").
+
+```bash
+# Save tracks to your library (default type)
+spores save <track_id> [more_track_ids...]
+
+# Save albums to your library
+spores save -t album <album_id> [more_album_ids...]
+
+# Save (follow) playlists to your library
+spores save -t playlist <playlist_id> [more_playlist_ids...]
+```
+
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `-t, --type <TYPE>` | Type of item: `track` (default), `album`, `playlist` |
+
 ## License
 
 MIT
