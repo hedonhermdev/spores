@@ -1,129 +1,217 @@
 ---
 name: spores
-description: Manage and develop the spores Rust CLI tool for Spotify playlist management. Use this skill when the user asks to build features, fix bugs, or extend the spores CLI, or when working with Spotify Web API integration via rspotify in this project.
+description: Manage Spotify playlists and search the Spotify catalog using the spores Rust CLI. Use this skill when the user asks to create, list, inspect, or modify Spotify playlists, add tracks to playlists, or search for tracks, albums, artists, or playlists on Spotify. Triggers on requests like "create a Spotify playlist", "add songs to my playlist", "search Spotify for...", "list my playlists", "what tracks are in this playlist", or any Spotify playlist management task.
 ---
 
 # Spores
 
-## Overview
+Spores is a Rust CLI tool (`spores`) for Spotify playlist management. All output is structured JSON. The entire codebase lives in `src/main.rs` (~480 lines).
 
-Spores is a Rust CLI tool that manages Spotify playlists via the Spotify Web API. It uses `rspotify` for API interaction with OAuth Authorization Code flow, `clap` (derive API) for subcommands, and outputs all results as pretty-printed JSON.
+## Prerequisites
 
-## Installation
+Before running any command, the user must have:
 
-```bash
-cargo install --git https://github.com/hedonhermdev/spores.git
-```
-
-This places the `spores` binary on your `$PATH` (typically `~/.cargo/bin/spores`).
-
-### First-Run Setup
-
-On first run, spores auto-creates a config file at `$XDG_CONFIG_HOME/spores/config.toml` (macOS: `~/Library/Application Support/spores/config.toml`) and exits with instructions.
-
-1. Create a Spotify app at https://developer.spotify.com/dashboard
-2. Set the redirect URI in the Spotify dashboard to `http://127.0.0.1:8888/callback`
-3. Fill in the generated config file:
+1. A Spotify developer app registered at https://developer.spotify.com/dashboard with a redirect URI of `http://127.0.0.1:8888/callback`
+2. A config file at the platform config directory (`~/Library/Application Support/spores/config.toml` on macOS, `~/.config/spores/config.toml` on Linux) containing:
 
 ```toml
-client_id = "your_client_id"
-client_secret = "your_client_secret"
+client_id = "<SPOTIFY_CLIENT_ID>"
+client_secret = "<SPOTIFY_CLIENT_SECRET>"
 # redirect_uri = "http://127.0.0.1:8888/callback"  # optional, this is the default
 ```
 
-4. Run any command (e.g. `spores playlist list`) — the browser opens for OAuth authorization. The token is cached at `$XDG_CONFIG_HOME/spores/token_cache.json` and reused/refreshed automatically on subsequent runs.
+On first run, spores opens a browser for OAuth authorization and caches the token at `config_dir/token_cache.json`. Subsequent runs reuse the cached token.
 
-## Architecture
+If the config file does not exist, `spores` creates a template and exits with instructions. If credentials are empty, it exits with an error.
 
-### Configuration
+## CLI Command Reference
 
-Credentials and settings are loaded from `$XDG_CONFIG_HOME/spores/config.toml` using the `dirs`, `toml`, and `serde` crates. The `AppConfig` struct is deserialized from TOML with fields: `client_id`, `client_secret`, and optional `redirect_uri` (defaults to `http://127.0.0.1:8888/callback`).
+All commands are run via `cargo run -- <subcommand>` during development or `spores <subcommand>` if installed.
 
-The `config_dir()` helper returns the path via `dirs::config_dir().join("spores")`.
+### Search
 
-### Authentication
+```
+spores search <QUERY> [-t track|album|artist|playlist] [-l LIMIT]
+```
 
-OAuth Authorization Code flow via `rspotify::AuthCodeSpotify`. Credentials are constructed manually with `Credentials::new()`. The `cli` feature provides `prompt_for_token()` which opens the browser for user authorization.
+- `QUERY` (required): search string
+- `-t, --type`: item type to search for (default: `track`)
+- `-l, --limit`: max results (default: `20`)
 
-Token caching is enabled via `rspotify::Config { token_cached: true, cache_path }` pointing to `$XDG_CONFIG_HOME/spores/token_cache.json`. On subsequent runs, rspotify loads and refreshes the cached token automatically — no browser interaction needed.
+Output shape varies by type. Track example:
 
-Required scopes: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-public`, `playlist-modify-private`.
+```json
+{
+  "query": "bohemian rhapsody",
+  "type": "track",
+  "total": 857,
+  "items": [
+    {
+      "id": "7tFiyTwD0nx5a1eklYtX2J",
+      "name": "Bohemian Rhapsody",
+      "artists": ["Queen"],
+      "album": "A Night At The Opera",
+      "duration_ms": 354947
+    }
+  ]
+}
+```
 
-The redirect URI must use `127.0.0.1` (not `localhost`) because Spotify rejects localhost.
+Album items have: `id`, `name`, `artists`, `release_date`.
+Artist items have: `id`, `name`, `genres`, `followers`, `popularity`.
+Playlist items have: `id`, `name`, `tracks`, `owner`, `url`.
 
-### CLI Structure
+### Playlist List
 
-The CLI uses nested subcommands. Top-level commands are `search` and `playlist`. All playlist operations are subcommands of `playlist`.
-
-#### `search <query> [-t type] [-l limit]`
-
-Searches Spotify. The `-t`/`--type` flag accepts `track` (default), `album`, `artist`, or `playlist`. The `-l`/`--limit` flag controls max results (default 20). Uses `rspotify::model::SearchType` and returns `SearchResult` — match on the variant corresponding to the search type.
-
-#### `playlist list`
-
-Lists all user playlists with pagination (50 per page via `current_user_playlists_manual`).
-
-#### `playlist create <name> [--public] [-d description]`
-
-Creates a new playlist for the current user.
-
-#### `playlist info <playlist>`
-
-Shows full playlist details including tracks (accepts playlist ID or Spotify URI).
-
-#### `playlist add <playlist> <tracks...>`
-
-Adds one or more tracks to a playlist (accepts track IDs or URIs).
-
-### Output Convention
-
-All output is JSON via `serde_json::to_string_pretty`. A shared `print_json(&Value)` helper is used throughout.
-
-## Development Guide
-
-### Key rspotify Patterns
-
-- Use `rspotify::model` for types: `PlaylistId`, `TrackId`, `UserId`, `PlayableId`, `PlayableItem`, `SearchType`, `SearchResult`, `FullPlaylist`, `SimplifiedPlaylist`
-- `PlaylistId::from_id_or_uri()` and `TrackId::from_id_or_uri()` accept both raw IDs and full Spotify URIs
-- `PlayableItem` is an enum with `Track`, `Episode`, and `Unknown(_)` variants — always include a wildcard arm when matching
-- `current_user_playlists_manual` takes `Option<u32>` for limit/offset, returns `Page<SimplifiedPlaylist>` — check `.next.is_none()` for pagination end
-- `playlist_add_items` returns `PlaylistResult` with a `snapshot_id` field
-
-### Building and Running
-
-```bash
-# Development
-cargo build
-cargo run -- search "Bohemian Rhapsody"
-cargo run -- search "Queen" -t artist -l 5
-cargo run -- playlist list
-cargo run -- playlist create "My Playlist" --public -d "A great playlist"
-cargo run -- playlist info <playlist_id_or_uri>
-cargo run -- playlist add <playlist_id_or_uri> <track_id_or_uri> [more_tracks...]
-
-# Install globally
-cargo install --git https://github.com/hedonhermdev/spores.git
-spores search "Bohemian Rhapsody"
+```
 spores playlist list
 ```
 
-### Adding New Commands
+Lists all playlists for the authenticated user (paginates automatically).
 
-**Top-level command:** Add a variant to the `Command` enum, write the handler, add a match arm in `main()`.
+```json
+{
+  "total": 12,
+  "playlists": [
+    {
+      "id": "37i9dQZF1DXcBWIGoYBM5M",
+      "name": "Today's Top Hits",
+      "tracks": 50,
+      "public": true,
+      "owner": "spotify",
+      "url": "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+    }
+  ]
+}
+```
 
-**Playlist subcommand:** Add a variant to the `PlaylistCommand` enum, write the handler, add a match arm in the `Command::Playlist` branch in `main()`.
+### Playlist Create
 
-### Common API Methods (rspotify)
+```
+spores playlist create <NAME> [--public] [-d DESCRIPTION]
+```
 
-- `spotify.search(query, search_type, market, include_external, limit, offset)` — Search Spotify catalog
-- `spotify.current_user()` — Get current user profile
-- `spotify.current_user_playlists_manual(limit, offset)` — Paginated playlist listing
-- `spotify.user_playlist_create(user_id, name, public, collaborative, description)` — Create playlist
-- `spotify.playlist(playlist_id, fields, market)` — Get full playlist details
-- `spotify.playlist_add_items(playlist_id, items, position)` — Add tracks to playlist
-- `spotify.playlist_remove_all_occurrences_of_items(playlist_id, items, snapshot_id)` — Remove tracks
-- `spotify.playlist_reorder_items(playlist_id, range_start, range_length, insert_before, snapshot_id)` — Reorder tracks
+- `NAME` (required): playlist name
+- `--public`: make playlist public (default: private)
+- `-d, --description`: optional description
 
-### Rust Edition
+```json
+{
+  "id": "3cEYpjA9oz9GiPac4AsH4n",
+  "name": "Road Trip",
+  "public": false,
+  "description": "Songs for the drive",
+  "url": "https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n"
+}
+```
 
-This project uses Rust edition **2024**.
+### Playlist Info
+
+```
+spores playlist info <PLAYLIST>
+```
+
+- `PLAYLIST` (required): playlist ID or Spotify URI
+
+Returns full playlist details including all tracks:
+
+```json
+{
+  "id": "3cEYpjA9oz9GiPac4AsH4n",
+  "name": "Road Trip",
+  "owner": "tirth",
+  "public": false,
+  "collaborative": false,
+  "followers": 0,
+  "description": "Songs for the drive",
+  "url": "https://open.spotify.com/playlist/3cEYpjA9oz9GiPac4AsH4n",
+  "total_tracks": 2,
+  "tracks": [
+    {
+      "type": "track",
+      "id": "7tFiyTwD0nx5a1eklYtX2J",
+      "name": "Bohemian Rhapsody",
+      "artists": ["Queen"],
+      "album": "A Night At The Opera",
+      "duration_ms": 354947
+    }
+  ]
+}
+```
+
+Tracks may also have `"type": "episode"` (with `show` and `duration_ms`) or `"type": "unknown"`.
+
+### Playlist Add
+
+```
+spores playlist add <PLAYLIST> <TRACKS>...
+```
+
+- `PLAYLIST` (required): playlist ID or Spotify URI
+- `TRACKS` (required): one or more track IDs or Spotify URIs
+
+```json
+{
+  "playlist": "3cEYpjA9oz9GiPac4AsH4n",
+  "added": 2,
+  "snapshot_id": "MTYsNjM..."
+}
+```
+
+## Workflow: Creating a Playlist and Adding Tracks
+
+1. Search for tracks to find their IDs:
+   ```
+   cargo run -- search "bohemian rhapsody" -t track -l 5
+   ```
+2. Extract the `id` values from the JSON output.
+3. Create a new playlist:
+   ```
+   cargo run -- playlist create "My Playlist" -d "A great playlist"
+   ```
+4. Extract the playlist `id` from the output.
+5. Add tracks to the playlist:
+   ```
+   cargo run -- playlist add <PLAYLIST_ID> <TRACK_ID_1> <TRACK_ID_2>
+   ```
+6. Verify with:
+   ```
+   cargo run -- playlist info <PLAYLIST_ID>
+   ```
+
+## Workflow: Inspecting Existing Playlists
+
+1. List all playlists: `cargo run -- playlist list`
+2. Pick a playlist ID from the output.
+3. Get full details: `cargo run -- playlist info <PLAYLIST_ID>`
+
+## Key Implementation Details
+
+- **IDs and URIs**: All commands accepting playlist or track identifiers accept both raw IDs (e.g., `7tFiyTwD0nx5a1eklYtX2J`) and full Spotify URIs (e.g., `spotify:track:7tFiyTwD0nx5a1eklYtX2J`).
+- **JSON output**: Every command outputs pretty-printed JSON via `print_json()`. Errors are also JSON: `{"error": "message"}`.
+- **Auth scopes**: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-public`, `playlist-modify-private`.
+- **Pagination**: `playlist list` automatically pages through all results (offset/limit=50).
+- **Error handling**: The codebase uses `.unwrap()` throughout. Config/startup errors go to stderr via `eprintln!()` + `process::exit(1)`.
+
+## Adding New Commands
+
+To extend spores with a new command:
+
+1. Add a variant to the `Command` enum (for top-level) or `PlaylistCommand` enum (for playlist subcommands) in the CLI section of `src/main.rs`.
+2. Write an `async fn cmd_<name>(spotify: &AuthCodeSpotify, ...)` handler following the existing pattern.
+3. Build output with `serde_json::json!({...})` and call `print_json(&value)`.
+4. Add a match arm in `main()` to dispatch to the handler.
+5. Run `cargo build` to verify, `cargo fmt` to format, `cargo clippy -- -D warnings` to lint.
+
+## Dependencies
+
+| Crate | Purpose |
+|---|---|
+| `clap` (4, derive) | CLI argument parsing |
+| `rspotify` (0.15.3, cli) | Spotify Web API client with OAuth |
+| `serde` / `serde_json` | JSON serialization |
+| `tokio` (full) | Async runtime |
+| `toml` (0.8) | Config file parsing |
+| `dirs` (6) | Platform config directory resolution |
+
+Do not add new dependencies without clear justification.
