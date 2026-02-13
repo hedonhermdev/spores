@@ -1,15 +1,17 @@
 use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use rspotify::{
+    AuthCodeSpotify, Config as SpotifyConfig, Credentials, OAuth,
     model::{PlaylistId, SearchResult, SearchType, TrackId, UserId},
     prelude::*,
-    scopes, AuthCodeSpotify, Config as SpotifyConfig, Credentials, OAuth,
+    scopes,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ---------------------------------------------------------------------------
 // Config
@@ -55,11 +57,98 @@ client_secret = ""
         .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()));
 
     if config.client_id.is_empty() || config.client_secret.is_empty() {
-        eprintln!("client_id and client_secret must be set in {}", path.display());
+        eprintln!(
+            "client_id and client_secret must be set in {}",
+            path.display()
+        );
         process::exit(1);
     }
 
     config
+}
+
+fn prompt(label: &str, default: Option<&str>) -> String {
+    let mut stdout = io::stdout().lock();
+    if let Some(d) = default {
+        write!(stdout, "{label} [{d}]: ").unwrap();
+    } else {
+        write!(stdout, "{label}: ").unwrap();
+    }
+    stdout.flush().unwrap();
+
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf).unwrap();
+    let trimmed = buf.trim().to_string();
+
+    if trimmed.is_empty() {
+        default.unwrap_or("").to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn cmd_configure() {
+    let dir = config_dir();
+    let path = dir.join("config.toml");
+
+    println!("Spores configuration wizard");
+    println!("Create a Spotify app at https://developer.spotify.com/dashboard");
+    println!();
+
+    // Load existing config values as defaults if the file already exists.
+    let existing: Option<AppConfig> = path
+        .exists()
+        .then(|| {
+            let contents = fs::read_to_string(&path).ok()?;
+            toml::from_str(&contents).ok()
+        })
+        .flatten();
+
+    let default_id = existing.as_ref().and_then(|c| {
+        if c.client_id.is_empty() {
+            None
+        } else {
+            Some(c.client_id.as_str())
+        }
+    });
+    let default_secret = existing.as_ref().and_then(|c| {
+        if c.client_secret.is_empty() {
+            None
+        } else {
+            Some(c.client_secret.as_str())
+        }
+    });
+    let default_redirect = existing
+        .as_ref()
+        .and_then(|c| c.redirect_uri.as_deref())
+        .or(Some("http://127.0.0.1:8888/callback"));
+
+    let client_id = prompt("Client ID", default_id);
+    let client_secret = prompt("Client secret", default_secret);
+    let redirect_uri = prompt("Redirect URI", default_redirect);
+
+    if client_id.is_empty() || client_secret.is_empty() {
+        eprintln!("client_id and client_secret are required.");
+        process::exit(1);
+    }
+
+    fs::create_dir_all(&dir).expect("failed to create config directory");
+
+    let config_toml = format!(
+        r#"# Spotify application credentials
+# Create an app at https://developer.spotify.com/dashboard
+client_id = "{client_id}"
+client_secret = "{client_secret}"
+
+# Must match the redirect URI registered in your Spotify app.
+# Use 127.0.0.1 — Spotify rejects "localhost".
+redirect_uri = "{redirect_uri}"
+"#
+    );
+
+    fs::write(&path, config_toml).expect("failed to write config file");
+    println!();
+    println!("Configuration saved to {}", path.display());
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +183,9 @@ enum Command {
         #[command(subcommand)]
         command: PlaylistCommand,
     },
+
+    /// Configure Spotify credentials interactively
+    Configure,
 }
 
 #[derive(Subcommand)]
@@ -418,11 +510,7 @@ async fn cmd_playlist_info(spotify: &AuthCodeSpotify, playlist_id_str: &str) {
     }));
 }
 
-async fn cmd_playlist_add(
-    spotify: &AuthCodeSpotify,
-    playlist_id_str: &str,
-    track_strs: &[String],
-) {
+async fn cmd_playlist_add(spotify: &AuthCodeSpotify, playlist_id_str: &str, track_strs: &[String]) {
     let playlist_id = PlaylistId::from_id_or_uri(playlist_id_str).unwrap();
 
     let track_ids: Vec<TrackId<'_>> = track_strs
@@ -454,6 +542,13 @@ async fn cmd_playlist_add(
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+
+    // Configure does not require authentication.
+    if let Command::Configure = &cli.command {
+        cmd_configure();
+        return;
+    }
+
     let spotify = authenticate().await;
 
     match &cli.command {
@@ -474,5 +569,6 @@ async fn main() {
                 cmd_playlist_add(&spotify, playlist, tracks).await
             }
         },
+        Command::Configure => unreachable!(),
     }
 }
