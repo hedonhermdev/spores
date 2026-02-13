@@ -6,7 +6,7 @@ use std::process;
 use clap::{Parser, Subcommand, ValueEnum};
 use rspotify::{
     AuthCodeSpotify, Config as SpotifyConfig, Credentials, OAuth,
-    model::{PlaylistId, SearchResult, SearchType, TrackId, UserId},
+    model::{AlbumId, PlaylistId, SearchResult, SearchType, TrackId, UserId},
     prelude::*,
     scopes,
 };
@@ -186,6 +186,17 @@ enum Command {
 
     /// Configure Spotify credentials interactively
     Configure,
+
+    /// Save a track, album, or playlist to your library
+    Save {
+        /// Type of item to save
+        #[arg(short, long, value_enum, default_value_t = ItemType::Track)]
+        r#type: ItemType,
+
+        /// IDs or URIs of items to save
+        #[arg(required = true)]
+        ids: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -270,7 +281,8 @@ async fn authenticate() -> AuthCodeSpotify {
             "playlist-read-private",
             "playlist-read-collaborative",
             "playlist-modify-public",
-            "playlist-modify-private"
+            "playlist-modify-private",
+            "user-library-modify"
         ),
         ..Default::default()
     };
@@ -536,6 +548,61 @@ async fn cmd_playlist_add(spotify: &AuthCodeSpotify, playlist_id_str: &str, trac
 }
 
 // ---------------------------------------------------------------------------
+// Save to library
+// ---------------------------------------------------------------------------
+
+async fn cmd_save(spotify: &AuthCodeSpotify, item_type: &ItemType, ids: &[String]) {
+    match item_type {
+        ItemType::Track => {
+            let track_ids: Vec<TrackId<'_>> = ids
+                .iter()
+                .map(|id| TrackId::from_id_or_uri(id).unwrap())
+                .collect();
+            spotify
+                .current_user_saved_tracks_add(track_ids)
+                .await
+                .unwrap();
+            print_json(&json!({
+                "type": "track",
+                "saved": ids.len(),
+                "ids": ids,
+            }));
+        }
+        ItemType::Album => {
+            let album_ids: Vec<AlbumId<'_>> = ids
+                .iter()
+                .map(|id| AlbumId::from_id_or_uri(id).unwrap())
+                .collect();
+            spotify
+                .current_user_saved_albums_add(album_ids)
+                .await
+                .unwrap();
+            print_json(&json!({
+                "type": "album",
+                "saved": ids.len(),
+                "ids": ids,
+            }));
+        }
+        ItemType::Playlist => {
+            for id in ids {
+                let playlist_id = PlaylistId::from_id_or_uri(id).unwrap();
+                spotify.playlist_follow(playlist_id, None).await.unwrap();
+            }
+            print_json(&json!({
+                "type": "playlist",
+                "saved": ids.len(),
+                "ids": ids,
+            }));
+        }
+        ItemType::Artist => {
+            print_json(&json!({
+                "error": "saving artists is not supported; use 'follow' instead"
+            }));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -570,5 +637,6 @@ async fn main() {
             }
         },
         Command::Configure => unreachable!(),
+        Command::Save { r#type, ids } => cmd_save(&spotify, r#type, ids).await,
     }
 }
