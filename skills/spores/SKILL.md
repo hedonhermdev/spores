@@ -11,10 +11,8 @@ Spores is a Rust CLI tool that manages Spotify playlists via the Spotify Web API
 
 ## Installation
 
-Install from the project root with cargo:
-
 ```bash
-cargo install --path .
+cargo install --git https://github.com/hedonhermdev/spores.git
 ```
 
 This places the `spores` binary on your `$PATH` (typically `~/.cargo/bin/spores`).
@@ -104,7 +102,7 @@ cargo run -- playlist info <playlist_id_or_uri>
 cargo run -- playlist add <playlist_id_or_uri> <track_id_or_uri> [more_tracks...]
 
 # Install globally
-cargo install --path .
+cargo install --git https://github.com/hedonhermdev/spores.git
 spores search "Bohemian Rhapsody"
 spores playlist list
 ```
