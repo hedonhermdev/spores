@@ -5,7 +5,7 @@ description: Manage Spotify playlists and search the Spotify catalog using the s
 
 # Spores
 
-Spores is a Rust CLI tool (`spores`) for Spotify playlist management. All output is structured JSON. The entire codebase lives in `src/main.rs` (~480 lines).
+Spores is a Rust CLI tool for Spotify playlist management. All output is structured JSON.
 
 ## Prerequisites
 
@@ -187,31 +187,6 @@ spores playlist add <PLAYLIST> <TRACKS>...
 
 ## Key Implementation Details
 
-- **IDs and URIs**: All commands accepting playlist or track identifiers accept both raw IDs (e.g., `7tFiyTwD0nx5a1eklYtX2J`) and full Spotify URIs (e.g., `spotify:track:7tFiyTwD0nx5a1eklYtX2J`).
-- **JSON output**: Every command outputs pretty-printed JSON via `print_json()`. Errors are also JSON: `{"error": "message"}`.
-- **Auth scopes**: `playlist-read-private`, `playlist-read-collaborative`, `playlist-modify-public`, `playlist-modify-private`.
-- **Pagination**: `playlist list` automatically pages through all results (offset/limit=50).
-- **Error handling**: The codebase uses `.unwrap()` throughout. Config/startup errors go to stderr via `eprintln!()` + `process::exit(1)`.
-
-## Adding New Commands
-
-To extend spores with a new command:
-
-1. Add a variant to the `Command` enum (for top-level) or `PlaylistCommand` enum (for playlist subcommands) in the CLI section of `src/main.rs`.
-2. Write an `async fn cmd_<name>(spotify: &AuthCodeSpotify, ...)` handler following the existing pattern.
-3. Build output with `serde_json::json!({...})` and call `print_json(&value)`.
-4. Add a match arm in `main()` to dispatch to the handler.
-5. Run `cargo build` to verify, `cargo fmt` to format, `cargo clippy -- -D warnings` to lint.
-
-## Dependencies
-
-| Crate | Purpose |
-|---|---|
-| `clap` (4, derive) | CLI argument parsing |
-| `rspotify` (0.15.3, cli) | Spotify Web API client with OAuth |
-| `serde` / `serde_json` | JSON serialization |
-| `tokio` (full) | Async runtime |
-| `toml` (0.8) | Config file parsing |
-| `dirs` (6) | Platform config directory resolution |
-
-Do not add new dependencies without clear justification.
+- **IDs and URIs**: All commands accept both raw IDs (e.g., `7tFiyTwD0nx5a1eklYtX2J`) and full Spotify URIs (e.g., `spotify:track:7tFiyTwD0nx5a1eklYtX2J`).
+- **JSON output**: Every command outputs pretty-printed JSON. Errors are also JSON: `{"error": "message"}`.
+- **Pagination**: `playlist list` automatically pages through all results.
