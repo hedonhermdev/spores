@@ -1,11 +1,11 @@
 ---
 name: spores
-description: Manage Spotify playlists and search the Spotify catalog using the spores Rust CLI. Use this skill when the user asks to create, list, inspect, or modify Spotify playlists, add tracks to playlists, or search for tracks, albums, artists, or playlists on Spotify. Triggers on requests like "create a Spotify playlist", "add songs to my playlist", "search Spotify for...", "list my playlists", "what tracks are in this playlist", or any Spotify playlist management task.
+description: Manage Spotify playlists, save items to your library, and search the Spotify catalog using the spores Rust CLI. Use this skill when the user asks to create, list, inspect, or modify Spotify playlists, add tracks to playlists, save tracks/albums/playlists to the library, or search for tracks, albums, artists, or playlists on Spotify. Triggers on requests like "create a Spotify playlist", "add songs to my playlist", "save this album", "search Spotify for...", "list my playlists", "what tracks are in this playlist", or any Spotify playlist/library management task.
 ---
 
 # Spores
 
-Spores is a Rust CLI tool for Spotify playlist management. All output is structured JSON.
+Spores is a Rust CLI tool for Spotify playlist management and library saving. All output is structured JSON.
 
 ## Prerequisites
 
@@ -158,6 +158,47 @@ spores playlist add <PLAYLIST> <TRACKS>...
 }
 ```
 
+### Save to Library
+
+```
+spores save [-t track|album|playlist] <IDS>...
+```
+
+- `-t, --type`: type of item to save (default: `track`)
+- `IDS` (required): one or more IDs or Spotify URIs
+
+Saves tracks or albums to the user's "Your Music" library. For playlists, this follows (saves) the playlist.
+
+Track example:
+
+```json
+{
+  "type": "track",
+  "saved": 2,
+  "ids": ["7tFiyTwD0nx5a1eklYtX2J", "4u7EnebtmKWzUH433cf5Qv"]
+}
+```
+
+Album example:
+
+```json
+{
+  "type": "album",
+  "saved": 1,
+  "ids": ["6i6folBtxKV28WX3msQ4FE"]
+}
+```
+
+Playlist example:
+
+```json
+{
+  "type": "playlist",
+  "saved": 1,
+  "ids": ["37i9dQZF1DXcBWIGoYBM5M"]
+}
+```
+
 ## Workflow: Creating a Playlist and Adding Tracks
 
 1. Search for tracks to find their IDs:
@@ -184,6 +225,26 @@ spores playlist add <PLAYLIST> <TRACKS>...
 1. List all playlists: `cargo run -- playlist list`
 2. Pick a playlist ID from the output.
 3. Get full details: `cargo run -- playlist info <PLAYLIST_ID>`
+
+## Workflow: Saving Items to Your Library
+
+1. Search for the item to find its ID:
+   ```
+   cargo run -- search "A Night at the Opera" -t album -l 5
+   ```
+2. Extract the `id` from the JSON output.
+3. Save it:
+   ```
+   cargo run -- save -t album <ALBUM_ID>
+   ```
+   For tracks (the default type), the `-t` flag can be omitted:
+   ```
+   cargo run -- save <TRACK_ID_1> <TRACK_ID_2>
+   ```
+   For playlists:
+   ```
+   cargo run -- save -t playlist <PLAYLIST_ID>
+   ```
 
 ## Key Implementation Details
 
