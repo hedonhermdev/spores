@@ -1,3 +1,6 @@
+### Note For Humans
+This project is full AI-slop, part of my vibe-coding experiments. Any code here is not tested or anything. I know nothing about how SPICE works or how to write React code. Not intended for use in production OR dev environments.
+
 # spores
 
 A command-line tool for managing Spotify playlists. Search the Spotify catalog and perform CRUD operations on your playlists, all from the terminal. Every command outputs structured JSON, making it easy to pipe into tools like `jq`.
